@@ -1,0 +1,20 @@
+# Actual host configuration
+/inventory/hosts.yml
+/inventory/host_vars/*/local.yml
+
+# Ansible Vault secrets
+/inventory/group_vars/all/vault.yml
+
+# Vault password
+/.vault_pass
+
+# SSH private keys and credentials
+*.pem
+*.key
+
+# Kubernetes credentials
+kubeconfig
+admin.conf
+
+# Environment variables
+.env

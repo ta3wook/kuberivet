@@ -1,0 +1,15 @@
+---
+all:
+  children:
+    k8s:
+      children:
+        control_plane:
+          hosts:
+            k8s-cp01:
+              ansible_host: 192.0.2.10
+        workers:
+          hosts:
+            k8s-worker01:
+              ansible_host: 192.0.2.11
+            k8s-worker02:
+              ansible_host: 192.0.2.12
