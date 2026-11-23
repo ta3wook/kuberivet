@@ -75,10 +75,15 @@ If needed, add `ansible_user`, `ansible_port`, or
 key before accepting it on the first connection.
 
 Review `inventory/group_vars/k8s.yml` for the common account and package versions.
-The containerd version includes a Debian release suffix. The Kubernetes
-repository minor version is currently fixed in `roles/kubernetes/tasks/main.yml`;
-changing `kubernetes_version` alone does not change that repository.
-Check that your selected package versions are available before provisioning.
+The containerd version includes a Debian release suffix.
+For Kubernetes, set `kubernetes_version` to the upstream version without the
+`v` prefix (for example, `1.37.1`) and `kubernetes_package_revision` to the APT
+package revision (for example, `1.1`). The package role combines them as
+`1.37.1-1.1`; the kubeadm template uses `v1.37.1` without the package revision.
+The Kubernetes repository minor version is currently fixed in
+`roles/kubernetes/tasks/main.yml`; changing `kubernetes_version` alone does
+not change that repository. Check that your selected package versions are
+available before provisioning.
 
 The actual `inventory/hosts.yml` is ignored by Git, including its node list,
 addresses, and group membership. Preserve a separate private backup.

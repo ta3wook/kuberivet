@@ -36,14 +36,14 @@
 - name: Kubernetes 및 관련 패키지 설치
   ansible.builtin.apt:
     name:
-      - "kubeadm={{ kubernetes_version }}"
-      - "kubelet={{ kubernetes_version }}"
+      - "kubeadm={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
+      - "kubelet={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
     state: present
     update_cache: true
 
 - name: Control plane에 kubectl 설치
   ansible.builtin.apt:
-    name: "kubectl={{ kubernetes_version }}"
+    name: "kubectl={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
     state: present
     update_cache: true
   when: "'control_plane' in group_names"
