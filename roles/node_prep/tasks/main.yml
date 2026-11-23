@@ -1,0 +1,6 @@
+---
+- name: Disable Swap
+  ansible.builtin.import_tasks: swap.yml
+
+- name: Load Modules
+  ansible.builtin.import_tasks: modules.yml

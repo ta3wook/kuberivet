@@ -1,0 +1,58 @@
+---
+- name: 스왑 상태 확인
+  ansible.builtin.command: /usr/sbin/swapon --show --noheadings
+  register: swap_status
+  changed_when: false
+
+- name: 스왑 비활성화
+  ansible.builtin.command: /usr/sbin/swapoff -a
+  when: swap_status.stdout | length > 0
+
+- name: /etc/fstab 주석 처리
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(?![ \t]*#)([ \t]*\S+[ \t]+\S+[ \t]+swap[ \t]+[^\r\n]*)$'
+    replace: '#\1'
+    backup: true
+  notify: Reload systemd
+
+- name: GPT swap parameter 있을 경우 수정
+  ansible.builtin.replace:
+    path: /etc/default/grub
+    regexp: '^(GRUB_CMDLINE_LINUX="(?:\s*[^\s"]+\s+)*\s*)systemd\.swap=[^\s"]+'
+    replace: '\g<1>systemd.swap=0'
+    backup: true
+  notify:
+    - Update grub
+    - Reboot node
+
+- name: GPT swap parameter 없을 경우 추가
+  ansible.builtin.replace:
+    path: /etc/default/grub
+    regexp: '^(GRUB_CMDLINE_LINUX=")(?!(?:systemd\.swap=|[^"]*\s+systemd\.swap=))'
+    replace: '\g<1>systemd.swap=0 '
+    backup: true
+  notify:
+    - Update grub
+    - Reboot node
+
+- name: Handler 즉시 실행
+  ansible.builtin.meta: flush_handlers
+
+- name: swap 상태 다시 확인
+  ansible.builtin.command: /usr/sbin/swapon --show --noheadings
+  register: swap_status_after
+  changed_when: false
+
+- name: /proc/cmdline 출력 확인
+  ansible.builtin.command: cat /proc/cmdline
+  register: kernel_cmdline
+  changed_when: false
+
+- name: Swap 영구적 비활성화 검증
+  ansible.builtin.assert:
+    that:
+      - swap_status_after.stdout | trim == ''
+      - "'systemd.swap=0' in kernel_cmdline.stdout.split()"
+    success_msg: "Swap 비활성화 검증 성공"
+    fail_msg: "Swap 비활성화 검증 실패"

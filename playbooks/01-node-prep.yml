@@ -1,0 +1,7 @@
+---
+- name: Node Preparation
+  hosts: k8s
+  become: true
+
+  roles:
+    - node_prep
