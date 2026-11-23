@@ -1,0 +1,69 @@
+---
+- name: 필요 패키지 설치
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: APT keyrings 디렉터리 생성
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Docker GPG 파일 다운로드
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: APT 저장소 설정 파일 작성
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/debian
+      Suites: trixie
+      Components: stable
+      Architectures: amd64
+      Signed-By: /etc/apt/keyrings/docker.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Containerd 설치
+  ansible.builtin.apt:
+    name: "containerd.io={{ containerd_version }}"
+    state: present
+    update_cache: true
+
+- name: Containerd 버전 고정
+  ansible.builtin.dpkg_selections:
+    name: containerd.io
+    selection: hold
+
+- name: Containerd 설정 파일이 위치할 디렉터리 생성
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Containerd 설정 파일 복사
+  ansible.builtin.copy:
+    src: config.toml
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart containerd service
+
+- name: Containerd 서비스 활성화 및 등록
+  ansible.builtin.systemd_service:
+    name: containerd
+    state: started
+    enabled: true

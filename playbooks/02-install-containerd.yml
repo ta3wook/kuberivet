@@ -1,0 +1,7 @@
+---
+- name: Install containerd
+  hosts: k8s
+  become: true
+
+  roles:
+    - containerd
