@@ -1,0 +1,7 @@
+---
+- name: Install kubernetes
+  hosts: k8s
+  become: true
+
+  roles:
+    - kubernetes
