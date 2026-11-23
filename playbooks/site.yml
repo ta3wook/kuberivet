@@ -1,0 +1,9 @@
+---
+- name: Prepare kubernetes nodes
+  ansible.builtin.import_playbook: 01-node-prep.yml
+
+- name: Install containerd
+  ansible.builtin.import_playbook: 02-install-containerd.yml
+
+- name: Install kubernetes
+  ansible.builtin.import_playbook: 03-install-kubernetes.yml
