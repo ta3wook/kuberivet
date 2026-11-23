@@ -8,10 +8,10 @@
     - overlay
     - br_netfilter
 
-- name: sysctl 파라미터 설정
+- name: Sysctl 파라미터 설정
   ansible.posix.sysctl:
     name: "{{ item }}"
-    value: '1'
+    value: "1"
     state: present
     sysctl_file: /etc/sysctl.d/99-kubetnetes.conf
     sysctl_set: true
