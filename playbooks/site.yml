@@ -7,3 +7,6 @@
 
 - name: Install kubernetes
   ansible.builtin.import_playbook: 03-install-kubernetes.yml
+
+- name: Initialize control plane
+  ansible.builtin.import_playbook: 04-init-control-plane.yml

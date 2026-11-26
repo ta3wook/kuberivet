@@ -1,0 +1,35 @@
+---
+- name: Deploy kubeadm configuration
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /etc/kubernetes/kubeadm-config.yaml
+    mode: "0644"
+
+- name: Initialize control plane
+  ansible.builtin.command:
+    cmd: kubeadm init --config=/etc/kubernetes/kubeadm-config.yaml
+    creates: /etc/kubernetes/admin.conf
+
+- name: Create Kubernetes admin user
+  ansible.builtin.user:
+    name: "{{ kubernetes_admin_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: Create kubectl configuration directory
+  ansible.builtin.file:
+    path: "/home/{{ kubernetes_admin_user }}/.kube"
+    state: directory
+    owner: "{{ kubernetes_admin_user }}"
+    group: "{{ kubernetes_admin_user }}"
+    mode: "0700"
+
+- name: Copy kubeconfig
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ kubernetes_admin_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ kubernetes_admin_user }}"
+    group: "{{ kubernetes_admin_user }}"
+    mode: "0600"

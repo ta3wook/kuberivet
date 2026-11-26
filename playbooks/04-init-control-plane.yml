@@ -1,0 +1,7 @@
+---
+- name: Init control plane
+  hosts: control_plane
+  become: true
+
+  roles:
+    - control_plane
