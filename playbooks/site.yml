@@ -1,17 +1,17 @@
 ---
-- name: Prepare kubernetes nodes
+- name: Prepare Kubernetes nodes
   ansible.builtin.import_playbook: 01-node-prep.yml
 
 - name: Install containerd
   ansible.builtin.import_playbook: 02-install-containerd.yml
 
-- name: Install kubernetes
+- name: Install Kubernetes packages
   ansible.builtin.import_playbook: 03-install-kubernetes.yml
 
 - name: Initialize control plane
   ansible.builtin.import_playbook: 04-init-control-plane.yml
 
-- name: Install calico
+- name: Install Calico
   ansible.builtin.import_playbook: 05-install-calico.yml
 
 - name: Join worker nodes

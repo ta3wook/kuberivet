@@ -1,6 +1,6 @@
 ---
-- name: Disable Swap
+- name: Disable swap
   ansible.builtin.import_tasks: swap.yml
 
-- name: Load Modules
+- name: Configure kernel modules and sysctl parameters
   ansible.builtin.import_tasks: modules.yml

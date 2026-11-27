@@ -1,5 +1,5 @@
 ---
-- name: 필요 패키지 설치
+- name: Install prerequisite packages
   ansible.builtin.apt:
     name:
       - curl
@@ -8,19 +8,19 @@
     update_cache: true
     cache_valid_time: 3600
 
-- name: APT Keyrings 디렉터리 생성
+- name: Create APT keyrings directory
   ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
     mode: "0755"
 
-- name: Kubernetes GPG 파일 다운로드
+- name: Download Kubernetes repository signing key
   ansible.builtin.get_url:
     url: https://pkgs.k8s.io/core:/stable:/v1.37/deb/Release.key
     dest: /etc/apt/keyrings/kubernetes.asc
     mode: "0644"
 
-- name: APT 저장소 설정 파일 작성
+- name: Configure Kubernetes APT repository
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/kubernetes.sources
     content: |
@@ -33,7 +33,7 @@
     group: root
     mode: "0644"
 
-- name: Kubernetes 및 관련 패키지 설치
+- name: Install kubeadm and kubelet
   ansible.builtin.apt:
     name:
       - "kubeadm={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
@@ -41,14 +41,14 @@
     state: present
     update_cache: true
 
-- name: Control plane에 kubectl 설치
+- name: Install kubectl on control plane
   ansible.builtin.apt:
     name: "kubectl={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
     state: present
     update_cache: true
   when: "'control_plane' in group_names"
 
-- name: Kubernetes 및 관련 패키지 버전 고정
+- name: Hold kubeadm and kubelet package versions
   ansible.builtin.dpkg_selections:
     name: "{{ item }}"
     selection: hold
@@ -56,7 +56,7 @@
     - kubeadm
     - kubelet
 
-- name: Kubectl 패키지 버전 고정
+- name: Hold kubectl package version
   ansible.builtin.dpkg_selections:
     name: "{{ item }}"
     selection: hold
@@ -64,7 +64,7 @@
     - kubectl
   when: "'control_plane' in group_names"
 
-- name: Kubelet 서비스 활성화 및 등록
+- name: Start and enable kubelet service
   ansible.builtin.systemd_service:
     name: kubelet
     state: started

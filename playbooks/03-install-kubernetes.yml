@@ -1,5 +1,5 @@
 ---
-- name: Install kubernetes
+- name: Install Kubernetes packages
   hosts: k8s
   become: true
 

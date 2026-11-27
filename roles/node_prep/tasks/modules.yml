@@ -1,5 +1,5 @@
 ---
-- name: 모듈 로드 상태 확인 및 로드
+- name: Load and persist kernel modules
   community.general.modprobe:
     name: "{{ item }}"
     state: present
@@ -8,7 +8,7 @@
     - overlay
     - br_netfilter
 
-- name: Sysctl 파라미터 설정
+- name: Configure sysctl parameters
   ansible.posix.sysctl:
     name: "{{ item }}"
     value: "1"
