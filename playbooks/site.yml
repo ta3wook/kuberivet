@@ -10,3 +10,6 @@
 
 - name: Initialize control plane
   ansible.builtin.import_playbook: 04-init-control-plane.yml
+
+- name: Install calico
+  ansible.builtin.import_playbook: 05-install-calico.yml

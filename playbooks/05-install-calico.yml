@@ -1,0 +1,6 @@
+---
+- name: Install calico
+  hosts: control_plane
+  become: true
+  roles:
+    - calico

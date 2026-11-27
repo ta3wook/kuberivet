@@ -1,0 +1,139 @@
+---
+- name: Install Python venv prerequisites
+  ansible.builtin.apt:
+    name:
+      - acl
+      - python3-venv
+      - python3-pip
+    state: present
+
+- name: Install Kubernetes Python dependencies
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - PyYAML
+      - jsonpatch
+    virtualenv: "{{ kubernetes_client_venv }}"
+    virtualenv_command: /usr/bin/python3 -m venv
+    state: present
+
+# shortcut: presence checks skip bootstrap updates; add an explicit Calico upgrade path before changing versions.
+- name: Check Calico installation CRD
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: installations.operator.tigera.io
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+  register: calico_installation_crd
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
+
+- name: Check Tigera Operator deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: tigera-operator
+    namespace: tigera-operator
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+  register: tigera_operator_deployment
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
+
+- name: Download Calico CRDs
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/v3_projectcalico_org.yaml"
+    dest: "/tmp/calico-crds-{{ calico_version }}.yaml"
+    mode: "0644"
+  when: calico_installation_crd.resources | length == 0
+
+- name: Apply Calico CRDs
+  kubernetes.core.k8s:
+    state: present
+    src: "/tmp/calico-crds-{{ calico_version }}.yaml"
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+    apply: true
+    server_side_apply:
+      field_manager: ansible-calico
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
+  when: calico_installation_crd.resources | length == 0
+
+- name: Download Tigera Operator CRDs
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml"
+    dest: "/tmp/tigera-operator-crds-{{ calico_version }}.yaml"
+    mode: "0644"
+  when: tigera_operator_deployment.resources | length == 0
+
+- name: Apply Tigera Operator CRDs
+  kubernetes.core.k8s:
+    state: present
+    src: "/tmp/tigera-operator-crds-{{ calico_version }}.yaml"
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+    apply: true
+    server_side_apply:
+      field_manager: ansible-calico
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
+  when: tigera_operator_deployment.resources | length == 0
+
+- name: Wait for Tigera Operator
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: tigera-operator
+    namespace: tigera-operator
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+    wait: true
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
+
+- name: Apply Calico custom resources
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ role_path }}/templates/custom-resources.yaml.j2"
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+    apply: true
+    server_side_apply:
+      field_manager: ansible-calico
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
+
+- name: Wait for Calico availability
+  kubernetes.core.k8s_info:
+    api_version: operator.tigera.io/v1
+    kind: TigeraStatus
+    name: calico
+    kubeconfig: "/home/{{ kubernetes_admin_user }}/.kube/config"
+  register: calico_status
+  until: >-
+    calico_status.resources | default([], true) | length > 0 and
+    (
+      ((calico_status.resources[0].get('status') or {}).get('conditions') or [])
+      | selectattr('type', 'equalto', 'Available')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+    )
+  retries: 30
+  delay: 10
+  changed_when: false
+  become: true
+  become_user: "{{ kubernetes_admin_user }}"
+  vars:
+    ansible_python_interpreter: "{{ kubernetes_client_python }}"
