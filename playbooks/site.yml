@@ -13,3 +13,6 @@
 
 - name: Install calico
   ansible.builtin.import_playbook: 05-install-calico.yml
+
+- name: Join worker nodes
+  ansible.builtin.import_playbook: 06-join-workers.yml

@@ -1,0 +1,83 @@
+---
+- name: Check worker join status
+  hosts: workers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check kubelet configuration
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_config
+
+    - name: Determine whether join is required
+      ansible.builtin.set_fact:
+        worker_join_needed: "{{ not kubelet_config.stat.exists }}"
+
+- name: Generate join command
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Collect selected workers
+      ansible.builtin.set_fact:
+        selected_workers: >-
+          {{
+            groups['workers']
+            | map('extract', hostvars)
+            | selectattr('worker_join_needed', 'defined')
+            | map(attribute='inventory_hostname')
+            | list
+          }}
+
+    - name: Generate worker join command
+      ansible.builtin.command:
+        cmd: kubeadm token create --ttl 30m --print-join-command
+      register: kubeadm_join
+      no_log: true
+      when: >-
+        (
+          selected_workers
+          | map('extract', hostvars, 'worker_join_needed')
+          | select('equalto', true)
+          | list
+          | length
+        ) > 0
+
+- name: Join worker nodes
+  hosts: workers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Join Kubernetes cluster
+      ansible.builtin.command:
+        cmd: >-
+          {{ hostvars[groups['control_plane'][0]].kubeadm_join.stdout }}
+          --node-name {{ inventory_hostname }}
+        creates: /etc/kubernetes/kubelet.conf
+      when: worker_join_needed
+      no_log: true
+
+- name: Verify worker nodes
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait for workers to be Ready
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - wait
+          - --for=condition=Ready
+          - "node/{{ item }}"
+          - --timeout=60s
+      loop: "{{ selected_workers }}"
+      register: worker_ready
+      until: worker_ready.rc == 0
+      retries: 5
+      delay: 10
+      changed_when: false
