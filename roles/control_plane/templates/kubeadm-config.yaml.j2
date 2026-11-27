@@ -11,5 +11,5 @@ apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: "v{{ kubernetes_version }}"
 networking:
-  podSubnet: 192.168.0.0/16
+  podSubnet: "{{ kubernetes_pod_cidr }}"
   serviceSubnet: 10.96.0.0/12
