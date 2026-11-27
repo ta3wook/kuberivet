@@ -2,12 +2,14 @@
 
 Simple Ansible automation for bootstrapping Kubernetes clusters in homelabs.
 
-Kuberivet prepares existing VMs for Kubernetes and initializes a single
-control plane, with separate playbooks for each stage.
+Kuberivet bootstraps existing Debian VMs into a Kubernetes cluster with one
+control-plane node, worker nodes, containerd, and Calico networking.
+Each stage can also be run as a separate playbook.
 
-> **Work in progress:** node preparation and control-plane initialization are
-> implemented. Worker joining and CNI installation are not yet automated.
-> Running the playbooks does not yet produce a workload-ready cluster.
+The initial homelab workflow is implemented and has completed successfully
+in the development environment, including cross-node Pod traffic, Service
+access, and DNS resolution. HA and lifecycle operations remain outside the
+current scope.
 
 ## Current scope
 
@@ -17,6 +19,8 @@ control plane, with separate playbooks for each stage.
 | Container runtime | Install containerd and configure the systemd cgroup driver |
 | Kubernetes packages | Install and hold kubeadm and kubelet, with kubectl on control-plane nodes |
 | Control plane | Deploy kubeadm configuration, run initialization, and configure a dedicated kubectl administrator |
+| Calico | Bootstrap CRDs and Tigera Operator, apply network settings, and wait for availability |
+| Workers | Generate a short-lived join command when needed, join workers, and wait for Ready |
 
 ## Requirements
 
@@ -39,8 +43,8 @@ control plane, with separate playbooks for each stage.
 
 The sample inventory contains one control-plane host and two workers.
 Use exactly one control-plane host for the current workflow; HA control-plane
-joining is not implemented. Workers receive node preparation and packages,
-but are not yet joined to the cluster.
+joining is not implemented. Worker node names are set from inventory hostnames,
+so use valid Kubernetes node names.
 VM creation and provisioning the Ansible SSH account are outside the playbooks.
 
 ## Quick start
@@ -95,6 +99,13 @@ The Kubernetes repository minor version is currently fixed in
 not change that repository. Check that your selected package versions are
 available before provisioning.
 
+`kubernetes_pod_cidr` is shared by kubeadm and Calico. Choose a range that does
+not overlap your VM or Service networks, and keep the existing range when
+rerunning against an initialized cluster. `calico_version` selects the Calico
+manifests. The Calico role installs `acl` and creates the dedicated Python
+client environment configured by `kubernetes_client_venv` and
+`kubernetes_client_python` on the control-plane VM.
+
 The actual `inventory/hosts.yml` is ignored by Git, including its node list,
 addresses, and group membership. Preserve a separate private backup.
 Only `examples/hosts.yml.example` is published as a reusable template.
@@ -119,11 +130,11 @@ Confirm that the host list matches your intended VMs and every host returns
 `pong`. The ping module checks SSH and Python availability, not just ICMP.
 Syntax checking does not verify package availability or prove installation will succeed.
 
-### 4. Prepare the nodes and initialize the control plane
+### 4. Bootstrap the cluster
 
 These playbooks change target VM settings, may reboot nodes during swap
-configuration, and initialize Kubernetes on the control-plane VM. Use VMs
-you intend to configure for this homelab.
+configuration, initialize the control plane, install Calico, and join workers.
+Use VMs you intend to configure for this homelab.
 
 ```bash
 ansible-playbook playbooks/site.yml
@@ -139,34 +150,42 @@ ansible-playbook playbooks/01-node-prep.yml
 ansible-playbook playbooks/02-install-containerd.yml
 ansible-playbook playbooks/03-install-kubernetes.yml
 ansible-playbook playbooks/04-init-control-plane.yml
+ansible-playbook playbooks/05-install-calico.yml
+ansible-playbook playbooks/06-join-workers.yml
 ```
 
 On fresh VMs, run the stages in the order shown. Initialization is skipped
 when `/etc/kubernetes/admin.conf` already exists. This guard does not check
 cluster health or recover a partially initialized control plane.
+Worker joining is skipped when `/etc/kubernetes/kubelet.conf` exists. Join
+commands expire after 30 minutes and are hidden from normal Ansible logs.
+Calico bootstrap manifests are skipped when the installation CRD and Operator
+Deployment respectively exist; custom resources and readiness checks still run.
+These guards do not implement cluster recovery or Calico upgrades.
+
+To run worker joining for a subset, include the control plane in the limit
+because it generates the join command and checks node readiness:
+
+```bash
+ansible-playbook playbooks/06-join-workers.yml \
+  --limit 'k8s-cp01,k8s-worker01' -K
+```
 
 ## Verify the result
 
-```bash
-ansible k8s -b -m ansible.builtin.command -a 'swapon --show'
-ansible k8s -b -m ansible.builtin.command -a 'systemctl is-active containerd'
-ansible k8s -m ansible.builtin.command -a 'dpkg-query -W containerd.io kubeadm kubelet'
-```
-
-Expected: no active swap entries, `active` for containerd, and installed
-versions for the three packages on every node. The play recap should show
-no failed or unreachable hosts. These checks cover node preparation only.
-Check the initialized API server from the controller:
+After the play recap shows no failed or unreachable hosts, open a session as
+the configured Kubernetes administrator on the control-plane VM and run:
 
 ```bash
-ansible control_plane -b -m ansible.builtin.command -a 'kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes'
+kubectl get nodes -o wide
+kubectl get pods -A
 ```
 
-The control-plane node should be listed. It can remain `NotReady`, and CoreDNS
-can remain pending, until a CNI plugin is installed. Workers will not appear
-until they are joined. Worker kubelets may restart while waiting for joining.
-On the control-plane VM, the configured administrator can also run
-`kubectl get nodes` using the kubeconfig in their home directory.
+The control plane and every configured worker should be Ready. System Pods,
+including Calico and CoreDNS, should have their containers ready. Worker nodes
+may display `<none>` in the ROLES column until a role label is added.
+A successful node check does not by itself prove Pod traffic or DNS works;
+validate those with test workloads before relying on the cluster.
 
 ## Troubleshooting
 
@@ -177,13 +196,39 @@ On the control-plane VM, the configured administrator can also run
 - **Package version not found:** check the configured version, Debian release,
   and repository minor version. Use the upstream version for kubeadm and the
   full version including `kubernetes_package_revision` for APT packages.
-- **Node is NotReady after initialization:** CNI installation and worker joining
-  are still manual follow-up steps; the current playbooks do not automate them.
+- **Node is NotReady:** check the failed Calico or worker readiness task,
+  then inspect `kubectl get pods -A` on the control plane. A node can be
+  temporarily NotReady while networking starts.
+- **Worker subset execution:** include the control-plane host in `--limit`;
+  it is needed even when only one worker is being joined.
+- **Template deprecation warning:** the tested `kubernetes.core 6.6.0` template
+  path emits a `Templar.environment` warning with ansible-core 2.19.11.
+  The validation run completed despite this warning; track the
+  [upstream issue](https://github.com/ansible-collections/kubernetes.core/issues/1208)
+  before changing the core or collection version.
 
 ## Validation status
 
-Control-plane initialization has been run successfully in the development
-homelab. Inventory loading, template rendering, and playbook syntax have also
-been checked. A fresh-VM, end-to-end walkthrough of this guide has not yet
-been independently verified. CNI installation and worker joining remain
-outside the current automated workflow.
+The following results were confirmed manually in the development homelab on
+2026-11-27:
+
+| Component | Validated environment |
+| --- | --- |
+| Topology | One control-plane VM and two workers |
+| Target OS | Debian GNU/Linux 13 (Trixie) |
+| Kubernetes | v1.37.1 |
+| Container runtime | containerd 2.3.6 |
+| Calico | v3.33.1 |
+
+- The full playbook reached its final recap with no failed or unreachable hosts.
+- All three nodes reported Ready and all listed system Pods were Running and ready.
+- A client Pod on one worker reached a web Pod on the other worker with HTTP 200.
+- Cluster DNS resolved the web Service, and access through the Service returned HTTP 200.
+
+Inventory loading, template rendering, playbook syntax, bootstrap guards,
+readiness conditions, and worker selection have also been checked without
+applying changes to the cluster.
+
+A fresh-VM walkthrough of this README and a full rerun after all workers joined
+have not yet been verified. Validation does not cover other distributions,
+HA, upgrades, reset/recovery, storage workloads, or production use.
